@@ -1,33 +1,79 @@
 import { URL_ROOT} from '@env'
 import React, { useState, useEffect, UseRef} from 'react';
 import {Text, View, StyleSheet, Button, TextInput, Alert} from 'react-native';
+import { useStripe } from '@stripe/stripe-react-native';
 
 
 export default function Checkout(props){
 
-    useEffect(() => {
-        async function sendServer() {
-          console.log('Efetuando requisição...')
-          await fetch(URL_ROOT, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  async function initializePaymentSheet(){
+    const amountInCents = Math.round(
+        props.route.params.price * 100,  
+
+    );
+    try{
+        const response = await fetch('http://10.53.52.34:3000/payment-intent', {
+            method:'POST',
+            headers:{
+                'Content-Type':'application/json'
             },
             body: JSON.stringify({
-              price: props.route.params.price,
-              address: props.route.params.address,
+                amount:amountInCents,
             })
-          })
-          .then(response => {
-            if (!response.ok){
-              throw new Error('Network response was not ok')
-            }
-            return response.json()
-          })
-          .then(data => {
-            console.log('Requisição bem-sucedida:', data)
-          }).catch(error => {console.error('Error:', error)});
+        })
+
+        const data = await response.json()
+
+        if (!response.ok){
+            throw new Error(data.error || 'Erro ao criar o PaymentIntent')
         }
+
+        console.log(data.clientSecret);
+
+        const { clientSecret } = data;
+
+        if (typeof clientSecret !== 'string'){
+            console.error('clientSecret não é uma string: ', clientSecret)
+            return false
+        }
+
+        if (!clientSecret) {
+            console.error('clientSecret não retornada !!!')
+            return false;
+        }
+        const { error } = await initPaymentSheet({
+            paymentIntentClientSecret: clientSecret,
+            merchantDisplayName: 'Navigation maps',
+            returnURL: '/',
+
+        })
+        if (error){
+            console.error('Erro ao inicializar o PaymentSheet: ', error)
+            return false
+        }
+        return true;
+
+    } catch (error) {
+        console.error('Error in initializePaymentSheet:', error)
+
+    }
+}
+async function openPaymentSheet() {
+  const { error } = await presentPaymentSheet();
+  if (error) {
+      Alert.alert(`Error code: ${error.code}`, error.message);
+
+  } else {Alert.alert('Sucesso', 'Seu pedido foi confirmado')}
+}
+
+    useEffect(async () => {
+      
+      const  isInitialized = await initializePaymentSheet();
+
+      if (isInitialized) {
+          await openPaymentSheet();
+      }
        
       })
       return (
